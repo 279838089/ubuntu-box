@@ -1,0 +1,12 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+*.apk
+*.aab
+*.keystore
+*.jks
+# 构建时由 scripts/fetch-rootfs.sh 下载
+app/src/main/assets/rootfs.tar.gz.bin

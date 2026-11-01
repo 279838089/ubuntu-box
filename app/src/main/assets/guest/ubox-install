@@ -1,0 +1,37 @@
+#!/bin/bash
+# 设置页的安装入口。用法:
+#   ubox-install apt <包...>      ubox-install apt-remove <包...>
+#   ubox-install npm <包...>      ubox-install npm-remove <包...>
+#   ubox-install node [主版本]
+set -uo pipefail
+export DEBIAN_FRONTEND=noninteractive
+umask 022
+kind="${1:-}"; shift || true
+
+# 上次安装被中断（应用被杀、手机重启）时 dpkg 会停在半配置状态，先自动修复
+repair_dpkg() {
+  if [ -n "$(ls -A /var/lib/dpkg/updates 2>/dev/null)" ] || dpkg --audit 2>/dev/null | grep -q .; then
+    echo "==> 检测到上次安装被中断，正在修复（dpkg --configure -a）"
+    dpkg --configure -a
+  fi
+}
+
+need_node() {
+  command -v npm >/dev/null 2>&1 && return 0
+  echo "==> 需要 Node.js，先安装 Node.js 22"
+  ubox-node
+}
+
+case "$kind" in
+  apt)        repair_dpkg; apt-get update && apt-get install -y --no-install-recommends "$@" ;;
+  apt-remove) repair_dpkg; apt-get remove -y "$@" && apt-get autoremove -y ;;
+  npm)        need_node && npm install -g "$@" ;;
+  npm-remove) npm uninstall -g "$@" ;;
+  node)       ubox-node "$@" ;;
+  *) echo "未知类型: $kind"; exit 2 ;;
+esac
+rc=$?
+echo
+if [ $rc -eq 0 ]; then echo "✅ 完成"; else echo "❌ 失败（退出码 $rc），上面是错误输出"; fi
+echo "按回车关闭此会话，返回设置页可查看安装状态"
+exit $rc

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Ubuntu 的 iputils-ping 需要 prctl/capabilities，被 Android seccomp 拒绝；
+# 改用 Android 自带的 ping（ICMP datagram socket，普通应用即可使用）。
+exec 2> >(grep --line-buffered -v 'linkerconfig' >&2)
+exec /system/bin/ping "$@"

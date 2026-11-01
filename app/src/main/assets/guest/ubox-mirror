@@ -1,0 +1,13 @@
+#!/bin/sh
+# 切换 apt 源。基础镜像没有 ca-certificates，所以默认用 http。
+set -e
+case "${1:-}" in
+  tuna)     M=http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports ;;
+  ustc)     M=http://mirrors.ustc.edu.cn/ubuntu-ports ;;
+  aliyun)   M=http://mirrors.aliyun.com/ubuntu-ports ;;
+  official) M=http://ports.ubuntu.com/ubuntu-ports ;;
+  *) echo "用法: ubox-mirror tuna|ustc|aliyun|official"; exit 1 ;;
+esac
+F=/etc/apt/sources.list.d/ubuntu.sources
+sed -i -E "s#^URIs: .*#URIs: $M/#" "$F"
+echo "apt 源已切换到 $M，接下来运行: apt update"

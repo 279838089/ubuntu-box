@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF000000"
+    android:orientation="vertical">
+
+    <Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FF1E1E1E"
+        android:minHeight="48dp"
+        android:titleTextAppearance="@android:style/TextAppearance.DeviceDefault.Medium"
+        android:titleTextColor="#FFFFFFFF" />
+
+    <LinearLayout
+        android:id="@+id/install_panel"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/install_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:gravity="center"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp" />
+
+        <ProgressBar
+            android:id="@+id/install_progress"
+            style="@android:style/Widget.DeviceDefault.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="1000" />
+
+        <Button
+            android:id="@+id/install_retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="重试"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <com.termux.view.TerminalView
+        android:id="@+id/terminal"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:visibility="gone" />
+
+    <HorizontalScrollView
+        android:id="@+id/extra_keys_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FF1E1E1E"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/extra_keys"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+</LinearLayout>

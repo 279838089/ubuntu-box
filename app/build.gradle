@@ -1,0 +1,62 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'dev.ubox.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "dev.ubox.app"
+        minSdk 26
+        targetSdk 36
+        versionCode 5
+        versionName "0.2.0"
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // 未配置正式签名前先用 debug 签名，方便直接安装
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            // proot 及其 loader 必须解压到 nativeLibraryDir 才能被 exec（W^X）
+            useLegacyPackaging = true
+            // 使用 native/termux-jni 重编的 16KB 对齐版本，覆盖 AAR 自带的 4KB 版本
+            pickFirsts += ['**/libtermux.so']
+            excludes += ['**/x86/**', '**/x86_64/**', '**/armeabi-v7a/**']
+            keepDebugSymbols += ['**/libproot.so', '**/libprootloader.so', '**/libprootloader32.so']
+        }
+    }
+
+    androidResources {
+        // rootfs 已经是 gzip，命名为 .bin 防止 aapt 解压/再压缩
+        noCompress += ['bin']
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+def rootfsAsset = file('src/main/assets/rootfs.tar.gz.bin')
+tasks.register('checkRootfs') {
+    doLast {
+        if (!rootfsAsset.isFile())
+            throw new GradleException('缺少 rootfs，请先运行 scripts/fetch-rootfs.sh')
+    }
+}
+tasks.named('preBuild') { dependsOn 'checkRootfs' }
+
+dependencies {
+    implementation 'com.termux.termux-app:terminal-view:0.118.0'
+    implementation 'org.apache.commons:commons-compress:1.27.1'
+}

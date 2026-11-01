@@ -1,0 +1,22 @@
+#!/bin/bash
+# 安装 Node.js 官方 linux-arm64 版本到 /usr/local。用法: ubox-node [主版本号，默认 22]
+# 国内可加速: NODE_MIRROR=https://npmmirror.com/mirrors/node ubox-node
+set -euo pipefail
+VER="${1:-22}"
+BASE="${NODE_MIRROR:-https://nodejs.org/dist}"
+need=()
+for p in curl ca-certificates xz-utils; do dpkg -s "$p" >/dev/null 2>&1 || need+=("$p"); done
+if [ ${#need[@]} -gt 0 ]; then
+  dpkg --configure -a
+  apt-get update
+  apt-get install -y --no-install-recommends "${need[@]}"
+fi
+SUMS=$(curl -fsSL "$BASE/latest-v$VER.x/SHASUMS256.txt")
+FILE=$(printf '%s\n' "$SUMS" | grep -o "node-v[0-9.]*-linux-arm64.tar.xz" | head -1)
+[ -n "$FILE" ] || { echo "找不到 Node $VER 的 arm64 包"; exit 1; }
+echo "下载 $FILE ..."
+curl -fL "$BASE/latest-v$VER.x/$FILE" -o "/tmp/$FILE"
+(cd /tmp && printf '%s\n' "$SUMS" | grep " $FILE\$" | sha256sum -c -)
+tar -xJf "/tmp/$FILE" -C /usr/local --strip-components=1 --no-same-owner
+rm -f "/tmp/$FILE"
+echo "node $(node -v)  npm $(npm -v)"

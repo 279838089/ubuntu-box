@@ -1,0 +1,32 @@
+#!/bin/bash
+# 由应用的前台服务启动和停止，不要手动运行。用法: ubox-sshd <端口>
+set -e
+umask 022
+PORT="${1:-8022}"
+if [ ! -x /usr/sbin/sshd ]; then
+  echo "未安装 openssh-server，请在设置页安装"
+  exit 1
+fi
+mkdir -p /run/sshd /root/.ssh
+chmod 755 /run/sshd
+chmod 700 /root/.ssh
+touch /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+ssh-keygen -A >/dev/null
+cat > /etc/ssh/sshd_config.d/ubox.conf <<CONF
+# 由 UbuntuBox 生成，每次启动 SSH 时覆盖
+Port $PORT
+PermitRootLogin yes
+PubkeyAuthentication yes
+# root 默认没有密码，只有在设置页设置密码后密码登录才可用
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+UsePAM no
+PrintMotd no
+SetEnv LANG=C.UTF-8
+CONF
+# 去掉 Ubuntu 默认的 AcceptEnv，避免客户端传来未安装的 locale
+sed -i -E 's/^(AcceptEnv)/# \1/' /etc/ssh/sshd_config
+/usr/sbin/sshd -t
+echo "sshd 监听端口 $PORT"
+exec /usr/sbin/sshd -D -e
