@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 import com.termux.terminal.TerminalSession;
@@ -40,8 +41,12 @@ public class TerminalService extends Service {
     NotificationManager manager = getSystemService(NotificationManager.class);
     manager.createNotificationChannel(
         new NotificationChannel(CHANNEL, "终端会话", NotificationManager.IMPORTANCE_LOW));
-    startForeground(
-        NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+    if (Build.VERSION.SDK_INT >= 34) {
+      startForeground(
+          NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+    } else {
+      startForeground(NOTIFICATION_ID, buildNotification());
+    }
     if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_SSH, false)
         && new Rootfs(this).isInstalled()) {
       try {
