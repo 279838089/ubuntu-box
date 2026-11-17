@@ -33,6 +33,11 @@ npm i -g @anthropic-ai/claude-code  # 或 @openai/codex、@google/gemini-cli 等
 
 `/etc/profile.d/ubox.sh` 会把 `node-compat.cjs` 加进 `NODE_OPTIONS`。Android 不允许普通应用读取网卡列表和 `/proc/stat`，这个补丁可以避免 `os.networkInterfaces()` 抛错，以及 `os.cpus()` 返回空数组。
 
+## 长期后台运行（防杀）
+
+在 ColorOS 等国产 ROM 上锁屏后，App 会被系统冻结，容器里的 frpc / cc-connect / sshd 随之断线。
+本仓库内置了三层保活方案（常驻监督进程 + 精确闹钟穿冻结 + 启动自恢复），详见 **[docs/keepalive.md](docs/keepalive.md)**，包含所有踩过的坑和验证方法。
+
 ## 许可
 
 - 本项目代码：沿用 DSHA 的 MIT 许可（见 `assets/licenses/DSHA-LICENSE.txt`）
