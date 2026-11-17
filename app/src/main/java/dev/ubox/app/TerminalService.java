@@ -57,84 +57,44 @@ public class TerminalService extends Service {
       }
     }
     if (rootfs.isInstalled()) startTunnel();
+    if (rootfs.isInstalled()) KeepAliveReceiver.schedule(this);
+  }
+
+  private ServicesDaemon servicesDaemon;
+
+  /** 常驻后台服务监督器（frpc + cc-connect），与 sshd 同样由 App 直接持有进程。 */
+  synchronized ServicesDaemon servicesDaemon() {
+    if (servicesDaemon == null) servicesDaemon = new ServicesDaemon(this);
+    return servicesDaemon;
+  }
+
+  private void startTunnel() {
+    new Thread(
+            () -> {
+              try {
+                ServicesDaemon daemon = servicesDaemon();
+                if (!daemon.needed()) return;
+                daemon.start();
+              } catch (Exception error) {
+                android.util.Log.e("UbuntuBox", "services daemon start failed", error);
+              }
+            },
+            "services-daemon-start")
+        .start();
   }
 
   // ---------------------------------------------------------------- 后台服务（frpc 隧道 + cc-connect）
 
   static final String PREF_CC = "ccconnect_enabled";
 
-  /** 在 guest 里写入看门狗与统一入口脚本（已存在则不覆盖）。 */
-  private static final String SCRIPT_ENSURE =
-      "mkdir -p /root/.cc-connect\n"
-      + "if [ ! -x /root/tunnel-watchdog.sh ]; then cat > /root/tunnel-watchdog.sh <<'WD'\n"
-      + "#!/bin/bash\n"
-      + "while true; do\n"
-      + "  if [ -x /usr/local/bin/frpc ] && [ -f /root/.frpc.ini ]; then\n"
-      + "    frpc -c /root/.frpc.ini >> /root/sakura.log 2>&1\n"
-      + "    echo \"$(date) frpc exited, restart in 10s\" >> /root/sakura.log\n"
-      + "    sleep 10\n"
-      + "  else\n"
-      + "    sleep 30\n"
-      + "  fi\n"
-      + "done\n"
-      + "WD\n"
-      + "chmod 755 /root/tunnel-watchdog.sh; fi\n"
-      + "if [ ! -x /root/ccconnect-watchdog.sh ]; then cat > /root/ccconnect-watchdog.sh <<'WD'\n"
-      + "#!/bin/bash\n"
-      + "while true; do\n"
-      + "  if [ -x /usr/local/bin/cc-connect ] && [ -f /root/.cc-connect/config.toml ]; then\n"
-      + "    cc-connect --config /root/.cc-connect/config.toml --force >> /root/.cc-connect/cc-connect.log 2>&1\n"
-      + "    echo \"$(date) cc-connect exited, restart in 10s\" >> /root/.cc-connect/cc-connect.log\n"
-      + "    sleep 10\n"
-      + "  else\n"
-      + "    sleep 30\n"
-      + "  fi\n"
-      + "done\n"
-      + "WD\n"
-      + "chmod 755 /root/ccconnect-watchdog.sh; fi\n"
-      + "cat > /root/services.sh <<'WD'\n"
-      + "#!/bin/bash\n"
-      + "pgrep -f '/root/tunnel-watchdog.sh' >/dev/null 2>&1 || setsid /root/tunnel-watchdog.sh </dev/null >>/root/sakura.log 2>&1 &\n"
-      + "if [ -f /root/.cc-connect/ENABLED ]; then\n"
-      + "  pgrep -f '/root/ccconnect-watchdog.sh' >/dev/null 2>&1 || setsid /root/ccconnect-watchdog.sh </dev/null >>/dev/null 2>&1 &\n"
-      + "fi\n"
-      + "WD\n"
-      + "chmod 755 /root/services.sh\n";
-
-  /**
-   * App 每次启动时确保后台服务在跑：配置过 frpc（/root/.frpc.ini）时拉起隧道看门狗；
-   * cc-connect 仅在用户开启过「后台常驻」（/root/.cc-connect/ENABLED）时拉起。
-   */
-  private void startTunnel() {
-    new Thread(
-            () -> {
-              try {
-                Rootfs rootfs = new Rootfs(this);
-                boolean frpc = new File(rootfs.rootfs, "root/.frpc.ini").isFile();
-                boolean cc = new File(rootfs.rootfs, "root/.cc-connect/ENABLED").isFile();
-                if (!frpc && !cc) return;
-                new Proot(this, rootfs).run(SCRIPT_ENSURE + "/root/services.sh\n", 30_000);
-              } catch (Exception error) {
-                android.util.Log.e("UbuntuBox", "services autostart failed", error);
-              }
-            },
-            "services-autostart")
-        .start();
-  }
-
-  /** 允许 cc-connect 后台执行：写 ENABLED 标记并立即拉起看门狗。 */
+  /** 允许 cc-connect 后台执行：写 ENABLED 标记并立即拉起监督器。 */
   void startCcConnect() {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_CC, true).apply();
     new Thread(
             () -> {
               try {
-                Rootfs rootfs = new Rootfs(this);
-                new Proot(this, rootfs)
-                    .run(
-                        SCRIPT_ENSURE
-                            + "touch /root/.cc-connect/ENABLED\n"
-                            + "/root/services.sh\n",
-                        30_000);
+                servicesDaemon().setCcConnectEnabled(true);
+                servicesDaemon().start();
               } catch (Exception error) {
                 android.util.Log.e("UbuntuBox", "cc-connect start failed", error);
               }
@@ -143,19 +103,13 @@ public class TerminalService extends Service {
         .start();
   }
 
-  /** 停止 cc-connect 后台执行：满掉标记、看门狗和进程。 */
+  /** 停止 cc-connect 后台执行。 */
   void stopCcConnect() {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_CC, false).apply();
     new Thread(
             () -> {
               try {
-                new Proot(this, new Rootfs(this))
-                    .run(
-                        "rm -f /root/.cc-connect/ENABLED\n"
-                            + "pkill -f /root/ccconnect-watchdog.sh\n"
-                            + "pkill -f 'cc-connect --config'\n"
-                            + "exit 0\n",
-                        15_000);
+                servicesDaemon().setCcConnectEnabled(false);
               } catch (Exception error) {
                 android.util.Log.e("UbuntuBox", "cc-connect stop failed", error);
               }
@@ -285,6 +239,7 @@ public class TerminalService extends Service {
 
   void exit() {
     stopSshProcess();
+    if (servicesDaemon != null) servicesDaemon.stop();
     for (TerminalSession session : new ArrayList<>(sessions)) session.finishIfRunning();
     sessions.clear();
     releaseWakeLock();
