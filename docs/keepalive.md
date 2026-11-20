@@ -168,3 +168,75 @@ adb logcat -d | grep -iE "hans.*dev.ubox"   # freeze/unfreeze 时间线
 - 锁屏 15 分钟耐久：frpc + cc-connect 全程存活
 - cc-connect 飞书 WebSocket 断线后最多 4~5 分钟自动恢复（闹钟周期 + 10 秒重启）
 - sshd / SakuraFrp 公网隧道 / cc-connect 后台执行，全部无需 root
+
+## 附：cc-connect（Claude Code 桥接）的坑
+
+在容器里跑 cc-connect + Claude Code 时还有三个坑，全部实测踩过：
+
+### 坑 8：Go 程序在 proot 下崩溃 `fatal error: newosproc (errno=38)`
+
+**症状**：cc-connect 收到一条消息、处理完就整个进程消失，飞书再无响应。日志里：
+
+```
+runtime: failed to create new OS thread (have 12 already; errno=38)
+fatal error: newosproc
+```
+
+**原因**：proot 容器里 Go 运行时并发创建线程（GC、调度器）时，clone 系统调用的属性经 proot 翻译后偶尔非法，内核返回 `EINVAL(38)`，Go 直接 fatal 退出。
+
+**解决**：给服务进程限制运行时并发（已内置在 ServicesDaemon 生成的监督脚本里）：
+
+```bash
+export GOMAXPROCS=1   # 消除并发线程创建
+export GOGC=200       # GC 频率减半，进一步降低触发概率
+```
+
+注意：proot 的 argv 末尾是 `env -i` 重建环境，所以变量必须写进监督脚本里 `export`，
+在启动 proot 的外层设置是无效的。另外 ServicesDaemon 每次 App 启动都会重写监督脚本，
+所以要改必须改 `ServicesDaemon.java` 里的模板，直接改手机上的文件会被覆盖。
+
+### 坑 9：root 下 yolo 模式被降级，每次都问权限
+
+**症状**：config.toml 设了 `mode = "yolo"`，但每次会话都打警告且仍要权限确认：
+
+```
+⚠️ Running as root: bypassPermissions mode is not supported
+and has been downgraded to auto.
+```
+
+**原因**：cc-connect 检测到自己以 uid 0 运行（proot `-0` 把容器内 uid 映射成 root），
+出于安全主动把 `bypassPermissions` 降级为 `auto`。`dontAsk` 模式更糟——未预授权的工具
+会被**自动拒绝**。
+
+**解决**：用 `acceptEdits` + 全量 `allowed_tools` 预授权，不触发降级路径，效果等同 yolo：
+
+```toml
+[projects.agent.options]
+work_dir = "/root"
+mode = "acceptEdits"
+allowed_tools = ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep",
+  "NotebookEdit", "WebFetch", "WebSearch", "Task", "TodoWrite", "SlashCommand",
+  "BashOutput", "KillShell", "ExitPlanMode", "ListMcpResources", "ReadMcpResource"]
+
+[projects.agent.options.env]
+# Claude Code 自身在 root 下拒绝 --dangerously-skip-permissions，
+# IS_SANDBOX 让它认为处于沙箱，允许该组合
+IS_SANDBOX = "1"
+```
+
+### 坑 10：TOML 表边界——`allowed_tools` 悄悄掉进 env 子表
+
+**症状**：config.toml 里明明写了 `allowed_tools = [...]`，重启后解析结果却是 0 个工具，
+权限照样问。
+
+**原因**：TOML 的键属于"最近一个表头"。如果 `allowed_tools` 写在
+`[projects.agent.options.env]` 表头之后，它就成了 env 表的一个键，而不是 options 的。
+
+**解决**：确认它出现在 `[projects.agent.options]` 之后、`[projects.agent.options.env]`
+之前；改完用 python 验证：
+
+```bash
+python3 -c "import tomllib; d=tomllib.load(open('/root/.cc-connect/config.toml','rb')); \
+o=d['projects'][0]['agent']['options']; print(o['mode'], len(o.get('allowed_tools',[])))"
+# 期望输出: acceptEdits 18
+```
