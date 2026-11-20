@@ -41,6 +41,10 @@ final class ServicesDaemon {
     script.append("#!/bin/bash\n")
         .append("# 由 UbuntuBox 常驻运行，不要手动执行。循环监督 frpc 与 cc-connect，\n")
         .append("# 进程退出 10 秒内重启；cc-connect 由 ENABLED 标记控制。\n")
+        // proot 下 Go 运行时并发开线程会触发 EINVAL(38)：fatal error: newosproc。
+        // 限制并发显著降低崩溃概率，GOGC 调高减少 GC 触发频率。
+        .append("export GOMAXPROCS=1\n")
+        .append("export GOGC=200\n")
         .append("while true; do\n")
         .append("  if [ -x /usr/local/bin/frpc ] && [ -f /root/.frpc.ini ]")
         .append(" && ! pgrep -x frpc >/dev/null 2>&1; then\n")
